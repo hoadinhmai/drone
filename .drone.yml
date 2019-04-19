@@ -1,15 +1,33 @@
-kind: pipeline
-name: default
-
-steps:
-- name: frontend
-  image: node:alpine
-  commands:
-  - npm install
-  - npm test
-
-- name: backend
-  image: golang:alpine
-  commands:
-  - go build
-  - go test
+pipeline:
+  build:
+    image: python:3.5.1-alpine
+    commands:
+      - apk update && apk add zip
+      - pip install -r requirements.txt -t .
+      - zip -r lambda-project-${DRONE_BUILD_NUMBER}.zip src
+  
+  s3-upload:
+    image: plugins/s3
+    acl: private
+    region: ap-southeast-2
+    access_key:
+      from_secret: aws_access_key_id
+    secret_key:
+      from_secret: aws_secret_access_key
+    bucket: hdm-s3-common-s3bucket-okportar9irk
+    target: drone
+    source: lambda-project-${DRONE_BUILD_NUMBER}.zip
+  
+  deploy:
+    image: robertstettner/drone-cloudformation
+    mode: createOrUpdate
+    region: ap-southeast-2
+    access_key:
+      from_secret: aws_access_key_id
+    secret_key:
+      from_secret: aws_secret_access_key
+    stackname: hdm-cfn-lambda-stack
+    template: aws/cfn-template.yml
+    params:
+      FunctionBucket: hdm-s3-common-s3bucket-okportar9irk
+      FunctionKey: drone/lambda-project-${DRONE_BUILD_NUMBER}.zip
